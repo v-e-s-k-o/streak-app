@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Streak</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,650;14..32,750&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Streak">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --bg-0:#05070b;
+    --bg-1:#0b1220;
+    --surface:rgba(255,255,255,0.055);
+    --surface-border:rgba(255,255,255,0.09);
+    --text-hi:#f5f6f8;
+    --text-mid:rgba(245,246,248,0.62);
+    --text-lo:rgba(245,246,248,0.38);
+    --accent:#3ddc97;
+    --accent-dim:rgba(61,220,151,0.16);
+    --purple:#af52de;
+    --purple-dim:rgba(175,82,222,0.18);
+    --danger:#ff453a;
+    --danger-dim:rgba(255,69,58,0.14);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+
+  html,body{ height:100%; margin:0; }
+
+  html{
+    background:var(--bg-1);
+  }
+
+  body{
+    font-family:"Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    font-optical-sizing:auto;
+    background:
+      radial-gradient(1200px 700px at 18% -8%, rgba(61,220,151,0.10), transparent 55%),
+      radial-gradient(900px 600px at 100% 100%, rgba(80,130,255,0.08), transparent 60%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-1));
+    background-attachment: fixed;
+    background-color: var(--bg-1);
+    color:var(--text-hi);
+    min-height:100dvh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 28px 16px calc(28px + env(safe-area-inset-bottom));
+    overflow-x:hidden;
+  }
+
+  .stage{
+    width:100%;
+    max-width:420px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:22px;
+    animation: stage-in 0.7s cubic-bezier(0.22,1,0.36,1) both;
+  }
+
+  @keyframes stage-in{
+    from{ opacity:0; transform:translateY(10px) scale(0.985); }
+    to{ opacity:1; transform:translateY(0) scale(1); }
+  }
+
+  .eyebrow-row{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    margin-bottom:6px;
+  }
+
+  .status-dot{
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 0 0 rgba(61,220,151,0.6);
+    animation: pulse 2.6s infinite, dot-in 0.5s cubic-bezier(0.22,1,0.36,1) 0.1s both;
+    margin-bottom:10px;
+  }
+
+  @keyframes dot-in{ from{ opacity:0; transform:scale(0.4); } to{ opacity:1; transform:scale(1); } }
+
+  @keyframes pulse{
+    0%{ box-shadow:0 0 0 0 rgba(61,220,151,0.45); }
+    70%{ box-shadow:0 0 0 10px rgba(61,220,151,0); }
+    100%{ box-shadow:0 0 0 0 rgba(61,220,151,0); }
+  }
+
+  .label{ font-size:15px; color:var(--text-mid); letter-spacing:0.01em; text-align:center; }
+
+  .since{
+    font-size:13px;
+    color:var(--text-lo);
+    text-align:center;
+    opacity:0;
+    animation: fade-in 0.6s ease 0.3s forwards;
+  }
+
+  @keyframes fade-in{ to{ opacity:1; } }
+
+  .clock-card{
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--surface-border);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius:32px;
+    padding:34px 24px 28px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:22px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.05) inset,
+      0 30px 60px -30px rgba(0,0,0,0.7);
+    animation: card-in 0.7s cubic-bezier(0.22,1,0.36,1) 0.08s both;
+  }
+
+  @keyframes card-in{ from{ opacity:0; transform:translateY(14px) scale(0.97); } to{ opacity:1; transform:translateY(0) scale(1); } }
+
+  .days-hero{ display:flex; align-items:baseline; gap:10px; line-height:1; }
+
+  .days-num{
+    font-size:clamp(60px, 18vw, 86px);
+    font-weight:650;
+    letter-spacing:-0.03em;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(180deg, #ffffff 0%, #cfd6dd 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    display:inline-block;
+    transition: transform 0.4s cubic-bezier(0.22,1,0.36,1);
+  }
+
+  .days-num.tick{ animation: pop 0.4s cubic-bezier(0.22,1,0.36,1); }
+
+  @keyframes pop{ 0%{ transform:scale(1); } 35%{ transform:scale(1.06); } 100%{ transform:scale(1); } }
+
+  .days-unit{ font-size:19px; font-weight:500; color:var(--text-mid); padding-bottom:9px; }
+
+  .hms-row{ display:flex; width:100%; gap:10px; }
+
+  .hms-cell{
+    flex:1;
+    background:rgba(255,255,255,0.035);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:18px;
+    padding:14px 6px 12px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+    transition: background 0.3s ease;
+  }
+
+  .hms-num{
+    font-size:22px;
+    font-weight:600;
+    font-variant-numeric: tabular-nums;
+    color:var(--text-hi);
+    min-width:2.4ch;
+    text-align:center;
+    display:inline-block;
+  }
+
+  .hms-num.tick{ animation: digit-in 0.35s cubic-bezier(0.22,1,0.36,1); }
+
+  @keyframes digit-in{ 0%{ transform:translateY(-6px); opacity:0.4; } 100%{ transform:translateY(0); opacity:1; } }
+
+  .hms-label{ font-size:11px; color:var(--text-lo); letter-spacing:0.02em; }
+
+  .milestone-hint{
+    font-size:12.5px;
+    color:var(--text-lo);
+    text-align:center;
+  }
+
+  .milestone-hint strong{ color:var(--purple); font-weight:600; }
+
+  /* calendar */
+  .calendar-card{
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--surface-border);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius:28px;
+    padding:22px 20px 20px;
+    animation: card-in 0.7s cubic-bezier(0.22,1,0.36,1) 0.2s both;
+  }
+
+  .cal-header{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:16px;
+  }
+
+  .cal-month{ font-size:15px; font-weight:650; letter-spacing:-0.01em; }
+
+  .cal-weekdays{
+    display:grid;
+    grid-template-columns: repeat(7,1fr);
+    gap:6px;
+    margin-bottom:8px;
+  }
+
+  .cal-weekday{
+    font-size:10.5px;
+    color:var(--text-lo);
+    text-align:center;
+    font-weight:600;
+    letter-spacing:0.02em;
+  }
+
+  .cal-grid{
+    display:grid;
+    grid-template-columns: repeat(7,1fr);
+    gap:6px;
+  }
+
+  .cal-cell{
+    aspect-ratio:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    border-radius:11px;
+    font-size:12.5px;
+    font-weight:500;
+    color:var(--text-mid);
+    background:rgba(255,255,255,0.025);
+    opacity:0;
+    animation: cell-in 0.35s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+
+  @keyframes cell-in{ from{ opacity:0; transform:scale(0.85); } to{ opacity:1; transform:scale(1); } }
+
+  .cal-cell.empty{ background:transparent; animation:none; opacity:1; }
+  .cal-cell.blank{ color:var(--text-lo); }
+  .cal-cell.future{ color:var(--text-lo); }
+
+  .cal-cell.success{ background:var(--accent-dim); color:#eafff3; }
+  .cal-cell.success::after{ content:''; position:absolute; bottom:4px; width:4px; height:4px; border-radius:50%; background:var(--accent); }
+
+  .cal-cell.milestone{ background:var(--purple-dim); color:#f6ecff; font-weight:700; }
+  .cal-cell.milestone::after{ content:''; position:absolute; bottom:4px; width:4px; height:4px; border-radius:50%; background:var(--purple); }
+
+  .cal-cell.relapse{ background:var(--danger-dim); color:#ffe1df; }
+  .cal-cell.relapse::after{ content:''; position:absolute; bottom:4px; width:4px; height:4px; border-radius:50%; background:var(--danger); }
+
+  .cal-cell.today{ box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.55); }
+
+  .legend{
+    display:flex;
+    gap:16px;
+    justify-content:center;
+    flex-wrap:wrap;
+    margin-top:16px;
+  }
+
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-lo); }
+
+  .legend-dot{ width:7px; height:7px; border-radius:50%; }
+  .legend-dot.green{ background:var(--accent); }
+  .legend-dot.purple{ background:var(--purple); }
+  .legend-dot.red{ background:var(--danger); }
+
+  .actions{ width:100%; display:flex; flex-direction:column; align-items:center; gap:14px; }
+
+  .relapse-btn{
+    appearance:none;
+    border:1px solid rgba(255,69,58,0.35);
+    background:var(--danger-dim);
+    color:#ff8079;
+    font-size:15px;
+    font-weight:600;
+    padding:14px 26px;
+    border-radius:20px;
+    cursor:pointer;
+    width:100%;
+    transition: transform 0.25s cubic-bezier(0.22,1,0.36,1), background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    font-family:inherit;
+  }
+
+  .relapse-btn:hover{
+    background:rgba(255,69,58,0.19);
+    border-color:rgba(255,69,58,0.5);
+    box-shadow:0 8px 24px -12px rgba(255,69,58,0.45);
+  }
+
+  .relapse-btn:active{ transform: scale(0.96); background:rgba(255,69,58,0.24); }
+
+  .hint{ font-size:12.5px; color:var(--text-lo); text-align:center; line-height:1.5; padding:0 8px; }
+
+  .overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(3,5,9,0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.32s cubic-bezier(0.22,1,0.36,1);
+    z-index:10;
+    padding:0 14px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .overlay.open{ opacity:1; pointer-events:auto; }
+
+  @media (min-width:640px){ .overlay{ align-items:center; } }
+
+  .sheet{
+    width:100%;
+    max-width:360px;
+    background:rgba(22,25,32,0.92);
+    border:1px solid rgba(255,255,255,0.09);
+    border-radius:24px;
+    padding:26px 22px 16px;
+    transform:translateY(24px) scale(0.96);
+    transition:transform 0.36s cubic-bezier(0.22,1,0.36,1);
+    text-align:center;
+  }
+
+  .overlay.open .sheet{ transform:translateY(0) scale(1); }
+
+  .sheet-title{ font-size:17px; font-weight:650; margin:0 0 8px; }
+
+  .sheet-body{ font-size:13.5px; color:var(--text-mid); line-height:1.5; margin:0 0 22px; }
+
+  .sheet-actions{ display:flex; flex-direction:column; gap:10px; }
+
+  .sheet-btn{
+    appearance:none;
+    border:none;
+    border-radius:16px;
+    padding:14px;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:inherit;
+    transition: transform 0.2s cubic-bezier(0.22,1,0.36,1), background 0.2s ease, opacity 0.2s ease;
+  }
+
+  .sheet-btn.confirm{ background:var(--danger); color:#1a0605; }
+  .sheet-btn.confirm:hover{ opacity:0.92; }
+  .sheet-btn.cancel{ background:rgba(255,255,255,0.07); color:var(--text-hi); }
+  .sheet-btn.cancel:hover{ background:rgba(255,255,255,0.11); }
+  .sheet-btn:active{ transform:scale(0.97); }
+
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* milestone celebration */
+  .milestone-overlay{
+    position:fixed;
+    inset:0;
+    background:radial-gradient(900px 900px at 50% 40%, rgba(175,82,222,0.22), rgba(3,5,9,0.78) 65%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.4s ease;
+    z-index:20;
+  }
+
+  .milestone-overlay.show{ opacity:1; pointer-events:auto; }
+
+  .milestone-burst{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:14px;
+    transform:scale(0.8);
+    opacity:0;
+  }
+
+  .milestone-overlay.show .milestone-burst{
+    animation: burst-in 0.6s cubic-bezier(0.22,1,0.36,1) 0.05s forwards;
+  }
+
+  @keyframes burst-in{
+    0%{ transform:scale(0.8); opacity:0; }
+    60%{ transform:scale(1.06); opacity:1; }
+    100%{ transform:scale(1); opacity:1; }
+  }
+
+  .milestone-rays{
+    position:absolute;
+    inset:-90px;
+    border-radius:50%;
+    background: conic-gradient(from 0deg, rgba(175,82,222,0.35), transparent 12%, transparent 88%, rgba(175,82,222,0.35));
+    animation: rays-spin 6s linear infinite;
+    z-index:-1;
+  }
+
+  @keyframes rays-spin{ to{ transform:rotate(360deg); } }
+
+  .milestone-badge{
+    width:168px;
+    height:168px;
+    border-radius:50%;
+    background:linear-gradient(180deg, rgba(175,82,222,0.28), rgba(175,82,222,0.08));
+    border:1px solid rgba(175,82,222,0.5);
+    box-shadow:0 30px 60px -20px rgba(175,82,222,0.55);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+  }
+
+  .milestone-num{
+    font-size:52px;
+    font-weight:750;
+    letter-spacing:-0.02em;
+    color:#fff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .milestone-label{ font-size:14px; color:rgba(255,255,255,0.75); font-weight:500; }
+
+  .milestone-caption{
+    font-size:15.5px;
+    font-weight:600;
+    color:var(--text-hi);
+    text-align:center;
+  }
+
+  .milestone-sub{
+    font-size:12.5px;
+    color:var(--text-mid);
+    text-align:center;
+  }
+
+  .milestone-particle{
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:6px;
+    height:6px;
+    border-radius:50%;
+    background:var(--particle-color, var(--accent));
+    opacity:0;
+  }
+
+  .milestone-overlay.show .milestone-particle{
+    animation: particle-fly var(--particle-duration, 1.1s) cubic-bezier(0.16,1,0.3,1) var(--particle-delay, 0s) forwards;
+  }
+
+  @keyframes particle-fly{
+    0%{ transform:translate(-50%,-50%) translate(0,0) scale(1); opacity:1; }
+    100%{ transform:translate(-50%,-50%) translate(var(--particle-x), var(--particle-y)) scale(0.3); opacity:0; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .status-dot, .stage, .clock-card, .calendar-card, .days-num.tick, .hms-num.tick, .since, .cal-cell{
+      animation:none !important;
+      opacity:1;
+    }
+    .relapse-btn, .sheet-btn, .days-num, .hms-cell{ transition:none; }
+    .milestone-burst{ animation:none !important; opacity:1; transform:scale(1); }
+    .milestone-rays{ animation:none !important; }
+    .milestone-particle{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="stage">
+    <div class="eyebrow-row">
+      <div class="status-dot" aria-hidden="true"></div>
+      <div class="label">You're on a streak</div>
+      <div class="since" id="sinceLine">since —</div>
+    </div>
+
+    <div class="clock-card">
+      <div class="days-hero">
+        <span class="days-num" id="daysNum">0</span>
+        <span class="days-unit" id="daysUnit">days</span>
+      </div>
+
+      <div class="hms-row">
+        <div class="hms-cell">
+          <div class="hms-num" id="hoursNum">00</div>
+          <div class="hms-label">hours</div>
+        </div>
+        <div class="hms-cell">
+          <div class="hms-num" id="minsNum">00</div>
+          <div class="hms-label">min</div>
+        </div>
+        <div class="hms-cell">
+          <div class="hms-num" id="secsNum">00</div>
+          <div class="hms-label">sec</div>
+        </div>
+      </div>
+
+      <div class="milestone-hint" id="milestoneHint"></div>
+    </div>
+
+    <div class="calendar-card">
+      <div class="cal-header">
+        <div class="cal-month" id="calMonth">Month</div>
+      </div>
+      <div class="cal-weekdays" id="calWeekdays"></div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot green"></span>Day held</div>
+        <div class="legend-item"><span class="legend-dot purple"></span>Milestone</div>
+        <div class="legend-item"><span class="legend-dot red"></span>Relapse</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="relapse-btn" id="relapseBtn">Relapse</button>
+      <div class="hint">Tapping this logs today as a reset day. Your streak picks back up at midnight.</div>
+    </div>
+  </div>
+
+  <div class="milestone-overlay" id="milestoneOverlay" aria-hidden="true">
+    <div class="milestone-burst">
+      <div class="milestone-rays"></div>
+      <div class="milestone-badge">
+        <div class="milestone-num" id="milestoneNum">0</div>
+        <div class="milestone-label" id="milestoneUnit">days</div>
+      </div>
+      <div class="milestone-caption">Milestone reached</div>
+      <div class="milestone-sub">Tap anywhere to dismiss</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="sheet">
+      <div class="sheet-title">Reset your streak?</div>
+      <p class="sheet-body">Today gets marked as a reset day, and your count starts fresh at midnight. It doesn't undo the days you already held — those stay on the calendar.</p>
+      <div class="sheet-actions">
+        <button class="sheet-btn confirm" id="confirmBtn">Yes, log it</button>
+        <button class="sheet-btn cancel" id="cancelBtn">Keep going</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const KEY_FIRST = 'streak:first_start_date';
+  const KEY_CURRENT = 'streak:current_start_ts';
+  const KEY_RELAPSES = 'streak:relapse_dates';
+  const KEY_MILESTONE_SEEN = 'streak:milestone_seen';
+  const MILESTONES = [3,7,30,60,90,365];
+  const CACHE_PREFIX = 'streak_cache:';
+
+  let firstStartDate = null;
+  let currentStartTs = null;
+  let relapseDates = [];
+  let lastDays = null, lastHours = null, lastMins = null, lastSecs = null;
+
+  const daysNum = document.getElementById('daysNum');
+  const daysUnit = document.getElementById('daysUnit');
+  const hoursNum = document.getElementById('hoursNum');
+  const minsNum = document.getElementById('minsNum');
+  const secsNum = document.getElementById('secsNum');
+  const sinceLine = document.getElementById('sinceLine');
+  const overlay = document.getElementById('overlay');
+  const relapseBtn = document.getElementById('relapseBtn');
+  const confirmBtn = document.getElementById('confirmBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const milestoneHint = document.getElementById('milestoneHint');
+  const milestoneOverlay = document.getElementById('milestoneOverlay');
+  const milestoneNum = document.getElementById('milestoneNum');
+  const milestoneUnit = document.getElementById('milestoneUnit');
+  const calMonth = document.getElementById('calMonth');
+  const calWeekdays = document.getElementById('calWeekdays');
+  const calGrid = document.getElementById('calGrid');
+
+  // --- Supabase-backed storage, with an offline-resilient local cache -----
+  // Reading/writing needs a network round trip to Supabase. When the
+  // device is offline we fall back to a local cache so the streak
+  // doesn't appear to reset, and we retry writing once the connection
+  // (and an anonymous session) is back.
+  const SUPABASE_URL = 'https://ecewowumfjplvyyjpxaj.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_LGWRf068hm2NoK2039-KNA_QG1rnoVb';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let userId = null;
+  let pendingSync = {};
+
+  function cacheGet(key){
+    try{ return localStorage.getItem(CACHE_PREFIX + key); }catch(e){ return null; }
+  }
+
+  function cacheSet(key, value){
+    try{ localStorage.setItem(CACHE_PREFIX + key, value); }catch(e){}
+  }
+
+  async function ensureAuth(){
+    if(userId) return userId;
+    const { data: { session } } = await sb.auth.getSession();
+    if(session && session.user){
+      userId = session.user.id;
+      return userId;
+    }
+    const { data, error } = await sb.auth.signInAnonymously();
+    if(error) throw error;
+    userId = data.user.id;
+    return userId;
+  }
+
+  async function persistedGet(key){
+    try{
+      await ensureAuth();
+      const { data, error } = await sb
+        .from('streak_kv')
+        .select('value')
+        .eq('user_id', userId)
+        .eq('key', key)
+        .maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('no row for ' + key);
+      cacheSet(key, data.value);
+      return data.value;
+    }catch(e){
+      const cached = cacheGet(key);
+      if(cached !== null) return cached;
+      throw e;
+    }
+  }
+
+  async function persistedSet(key, value){
+    cacheSet(key, value);
+    try{
+      await ensureAuth();
+      const { error } = await sb
+        .from('streak_kv')
+        .upsert({ user_id: userId, key, value, updated_at: new Date().toISOString() }, { onConflict: 'user_id,key' });
+      if(error) throw error;
+      delete pendingSync[key];
+    }catch(e){
+      pendingSync[key] = value;
+    }
+  }
+
+  async function flushPendingSync(){
+    const keys = Object.keys(pendingSync);
+    if(!keys.length) return;
+    try{ await ensureAuth(); }catch(e){ return; }
+    for(const key of keys){
+      try{
+        const { error } = await sb
+          .from('streak_kv')
+          .upsert({ user_id: userId, key, value: pendingSync[key], updated_at: new Date().toISOString() }, { onConflict: 'user_id,key' });
+        if(error) throw error;
+        delete pendingSync[key];
+      }catch(e){ /* still offline, try again next time */ }
+    }
+  }
+
+  window.addEventListener('online', flushPendingSync);
+  // ---------------------------------------------------------------------
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  function toDateStr(d){
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  function dateStrToDate(s){
+    const [y,m,d] = s.split('-').map(Number);
+    return new Date(y, m-1, d);
+  }
+
+  function addDays(dateObj, n){
+    const d = new Date(dateObj);
+    d.setDate(d.getDate()+n);
+    return d;
+  }
+
+  function nextMidnight(from){
+    const d = new Date(from);
+    d.setHours(24,0,0,0);
+    return d;
+  }
+
+  function daysBetween(a,b){
+    return Math.round((b-a)/86400000);
+  }
+
+  function formatSince(ts){
+    const d = new Date(ts);
+    return 'since ' + d.toLocaleString(undefined, {
+      month:'short', day:'numeric', year:'numeric',
+      hour:'2-digit', minute:'2-digit', hour12:false
+    });
+  }
+
+  function tick(el){
+    el.classList.remove('tick');
+    void el.offsetWidth;
+    el.classList.add('tick');
+  }
+
+  function render(){
+    if(!currentStartTs) return;
+    const diff = Math.max(0, Date.now() - currentStartTs);
+    const totalSec = Math.floor(diff/1000);
+    const days = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400)/3600);
+    const mins = Math.floor((totalSec % 3600)/60);
+    const secs = totalSec % 60;
+
+    if(days !== lastDays){
+      const isRollover = lastDays !== null;
+      daysNum.textContent = days;
+      daysUnit.textContent = days === 1 ? 'day' : 'days';
+      if(isRollover) tick(daysNum);
+      lastDays = days;
+      renderMilestoneHint();
+      if(isRollover) checkMilestoneCelebration(days);
+    }
+    if(hours !== lastHours){
+      hoursNum.textContent = pad(hours);
+      if(lastHours !== null) tick(hoursNum);
+      lastHours = hours;
+    }
+    if(mins !== lastMins){
+      minsNum.textContent = pad(mins);
+      if(lastMins !== null) tick(minsNum);
+      lastMins = mins;
+    }
+    if(secs !== lastSecs){
+      secsNum.textContent = pad(secs);
+      tick(secsNum);
+      lastSecs = secs;
+    }
+  }
+
+  function renderMilestoneHint(){
+    const currentDayCount = lastDays === null ? 0 : lastDays;
+    const streakDayNumber = currentDayCount + 1;
+    const next = MILESTONES.find(m => m > currentDayCount);
+    if(!next){
+      milestoneHint.innerHTML = "You've cleared every milestone on the board.";
+      return;
+    }
+    const away = next - currentDayCount;
+    milestoneHint.innerHTML = `<strong>${next}-day mark</strong> in ${away} ${away === 1 ? 'day' : 'days'}`;
+  }
+
+  function currentDays(){
+    if(!currentStartTs) return 0;
+    const diff = Math.max(0, Date.now() - currentStartTs);
+    return Math.floor(diff / 86400000);
+  }
+
+  function spawnParticles(){
+    document.querySelectorAll('.milestone-particle').forEach(p => p.remove());
+    const colors = ['var(--purple)', 'var(--accent)', '#ffffff'];
+    const burst = document.querySelector('.milestone-burst');
+    const count = 16;
+    for(let i=0;i<count;i++){
+      const p = document.createElement('div');
+      p.className = 'milestone-particle';
+      const angle = (Math.PI * 2 * i) / count + Math.random()*0.3;
+      const dist = 90 + Math.random()*70;
+      p.style.setProperty('--particle-x', (Math.cos(angle)*dist).toFixed(1) + 'px');
+      p.style.setProperty('--particle-y', (Math.sin(angle)*dist).toFixed(1) + 'px');
+      p.style.setProperty('--particle-color', colors[i % colors.length]);
+      p.style.setProperty('--particle-duration', (0.9 + Math.random()*0.6).toFixed(2) + 's');
+      p.style.setProperty('--particle-delay', (Math.random()*0.15).toFixed(2) + 's');
+      burst.appendChild(p);
+    }
+  }
+
+  function showMilestoneCelebration(days){
+    milestoneNum.textContent = days;
+    milestoneUnit.textContent = days === 1 ? 'day' : 'days';
+    spawnParticles();
+    milestoneOverlay.classList.add('show');
+    milestoneOverlay.setAttribute('aria-hidden', 'false');
+    clearTimeout(showMilestoneCelebration._t);
+    showMilestoneCelebration._t = setTimeout(hideMilestoneCelebration, 4200);
+  }
+
+  function hideMilestoneCelebration(){
+    milestoneOverlay.classList.remove('show');
+    milestoneOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  milestoneOverlay.addEventListener('click', hideMilestoneCelebration);
+
+  async function checkMilestoneCelebration(days){
+    if(!MILESTONES.includes(days)) return;
+    const today = toDateStr(new Date());
+    let seen = null;
+    try{ seen = JSON.parse(await persistedGet(KEY_MILESTONE_SEEN)); }catch(e){ seen = null; }
+    if(seen && seen.milestone === days && seen.date === today) return;
+    showMilestoneCelebration(days);
+    await persistedSet(KEY_MILESTONE_SEEN, JSON.stringify({ milestone: days, date: today }));
+  }
+
+  function buildSegments(){
+    const starts = [dateStrToDate(firstStartDate)];
+    const sorted = [...relapseDates].sort();
+    for(const r of sorted){
+      starts.push(addDays(dateStrToDate(r), 1));
+    }
+    return starts.sort((a,b)=>a-b);
+  }
+
+  function segmentStartFor(dateObj, segmentStarts){
+    let start = segmentStarts[0];
+    for(const s of segmentStarts){
+      if(s <= dateObj) start = s; else break;
+    }
+    return start;
+  }
+
+  function dayStatus(dateObj, todayObj, relapseSet, segmentStarts, firstDateObj){
+    if(dateObj > todayObj) return 'future';
+    if(dateObj < firstDateObj) return 'blank';
+    const dStr = toDateStr(dateObj);
+    if(relapseSet.has(dStr)) return 'relapse';
+    const segStart = segmentStartFor(dateObj, segmentStarts);
+    const dayNum = daysBetween(segStart, dateObj) + 1;
+    if(MILESTONES.includes(dayNum)) return 'milestone';
+    return 'success';
+  }
+
+  function renderCalendar(){
+    const now = new Date();
+    const year = now.getFullYear(), month = now.getMonth();
+    const first = new Date(year, month, 1);
+    const startWeekday = first.getDay();
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    const todayObj = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const firstDateObj = dateStrToDate(firstStartDate);
+    const relapseSet = new Set(relapseDates);
+    const segmentStarts = buildSegments();
+
+    calMonth.textContent = first.toLocaleString(undefined, { month:'long', year:'numeric' });
+
+    calWeekdays.innerHTML = '';
+    ['S','M','T','W','T','F','S'].forEach(w=>{
+      const el = document.createElement('div');
+      el.className = 'cal-weekday';
+      el.textContent = w;
+      calWeekdays.appendChild(el);
+    });
+
+    calGrid.innerHTML = '';
+    for(let i=0;i<startWeekday;i++){
+      const empty = document.createElement('div');
+      empty.className = 'cal-cell empty';
+      calGrid.appendChild(empty);
+    }
+    for(let day=1; day<=daysInMonth; day++){
+      const dateObj = new Date(year, month, day);
+      const status = dayStatus(dateObj, todayObj, relapseSet, segmentStarts, firstDateObj);
+      const cell = document.createElement('div');
+      cell.className = 'cal-cell ' + status;
+      cell.style.animationDelay = (day * 8) + 'ms';
+      if(dateObj.getTime() === todayObj.getTime()) cell.classList.add('today');
+      cell.innerHTML = `<span class="cal-day-num">${day}</span>`;
+      calGrid.appendChild(cell);
+    }
+  }
+
+  async function init(){
+    try{
+      firstStartDate = await persistedGet(KEY_FIRST);
+    }catch(e){
+      firstStartDate = toDateStr(new Date());
+      await persistedSet(KEY_FIRST, firstStartDate);
+    }
+
+    try{
+      currentStartTs = parseInt(await persistedGet(KEY_CURRENT), 10);
+    }catch(e){
+      currentStartTs = Date.now();
+      await persistedSet(KEY_CURRENT, String(currentStartTs));
+    }
+
+    try{
+      relapseDates = JSON.parse(await persistedGet(KEY_RELAPSES));
+    }catch(e){
+      relapseDates = [];
+      await persistedSet(KEY_RELAPSES, JSON.stringify(relapseDates));
+    }
+
+    sinceLine.textContent = formatSince(currentStartTs);
+    renderCalendar();
+    render();
+    renderMilestoneHint();
+    await checkMilestoneCelebration(currentDays());
+    setInterval(render, 1000);
+    setInterval(renderCalendar, 60000);
+    window.addEventListener('online', () => { renderCalendar(); });
+  }
+
+  async function doReset(){
+    const now = new Date();
+    const todayStr = toDateStr(now);
+    if(!relapseDates.includes(todayStr)) relapseDates.push(todayStr);
+    relapseDates.sort();
+
+    currentStartTs = nextMidnight(now).getTime();
+    lastDays = lastHours = lastMins = lastSecs = null;
+
+    sinceLine.textContent = formatSince(currentStartTs);
+    render();
+    renderMilestoneHint();
+    renderCalendar();
+
+    await persistedSet(KEY_CURRENT, String(currentStartTs));
+    await persistedSet(KEY_RELAPSES, JSON.stringify(relapseDates));
+
+    closeSheet();
+  }
+
+  function openSheet(){ overlay.classList.add('open'); }
+  function closeSheet(){ overlay.classList.remove('open'); }
+
+  relapseBtn.addEventListener('click', openSheet);
+  cancelBtn.addEventListener('click', closeSheet);
+  confirmBtn.addEventListener('click', doReset);
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) closeSheet(); });
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(()=>{});
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
