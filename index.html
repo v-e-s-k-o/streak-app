@@ -571,6 +571,29 @@
   .row .seg{ width:100%; }
   .row.col{ flex-direction:column; align-items:stretch; gap:10px; }
 
+  /* "When did it happen" / day-count controls */
+  .when-block{ margin:0 0 18px; }
+  .when-label{ font-size:11.5px; font-weight:700; color:var(--label-3); text-transform:uppercase; letter-spacing:.04em; margin:0 0 8px; text-align:center; }
+  .when-custom{ display:flex; align-items:center; justify-content:center; gap:16px; margin-top:12px; }
+  .when-custom.hidden{ display:none; }
+  .when-custom-val{ font-size:14px; font-weight:700; min-width:92px; text-align:center; font-variant-numeric:tabular-nums; }
+  .stepper-btn{
+    width:34px; height:34px; border-radius:10px; border:1px solid var(--hairline); background:var(--card-2);
+    color:var(--label); font-size:18px; font-weight:700; display:grid; place-items:center; cursor:pointer; line-height:1;
+    transition: background .15s ease, transform .15s var(--ease-spring);
+  }
+  .stepper-btn:active{ transform:scale(.88); background:var(--card-3); }
+  .stepper-btn.lg{ width:46px; height:46px; font-size:23px; border-radius:14px; }
+  .when-date{ font-size:12.5px; color:var(--label-3); text-align:center; margin-top:12px; font-weight:600; }
+
+  .count-stepper{ display:flex; align-items:center; justify-content:center; gap:26px; margin:4px 0 10px; }
+  .count-val{ font-size:36px; font-weight:800; min-width:60px; text-align:center; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  #dayCountHint{ margin-bottom:20px; }
+
+  .cell .cnt{ position:absolute; bottom:3px; right:5px; font-size:8px; font-weight:800; letter-spacing:0; opacity:.85; }
+  .cell.blank, .cell.future{ cursor:default; }
+  .cell.success, .cell.milestone, .cell.relapse{ cursor:pointer; }
+
   /* ============================================================
      CELEBRATION
      ============================================================ */
@@ -867,10 +890,49 @@
     <div class="grabber"></div>
     <div class="sheet-icon r"><svg><use href="#i-refresh"/></svg></div>
     <h2 class="sheet-title" id="sheetTitle">Reset your streak?</h2>
-    <p class="sheet-body">Today gets marked as a reset day and the count restarts at midnight. The days you already held stay on your calendar — a slip isn't a wipe.</p>
+    <p class="sheet-body">That day gets marked as a reset day and the count restarts at midnight after it. The days you already held stay on your calendar — a slip isn't a wipe.</p>
+
+    <div class="when-block">
+      <div class="when-label">When did it happen?</div>
+      <div class="seg" id="whenSeg">
+        <span class="seg-pill"></span>
+        <button type="button" class="on" data-when="0">Today</button>
+        <button type="button" data-when="1">Yesterday</button>
+        <button type="button" data-when="custom">Earlier</button>
+      </div>
+      <div class="when-custom hidden" id="whenCustomRow">
+        <button type="button" class="stepper-btn" id="whenMinus" aria-label="Fewer days ago">−</button>
+        <div class="when-custom-val"><span id="whenDaysVal">2</span> days ago</div>
+        <button type="button" class="stepper-btn" id="whenPlus" aria-label="More days ago">+</button>
+      </div>
+      <div class="when-date" id="whenDateLabel">Logging for Today</div>
+    </div>
+
     <div class="sheet-actions">
       <button class="btn btn-fill hold-btn" id="confirmBtn"><span class="hold-fill"></span><span class="lbl">Hold to confirm</span></button>
       <button class="btn btn-secondary" id="cancelBtn">Keep going</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DAY DETAIL SHEET ============ -->
+<div class="scrim" id="dayOverlay" role="dialog" aria-modal="true" aria-labelledby="dayTitle">
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="sheet-icon r"><svg><use href="#i-refresh"/></svg></div>
+    <h2 class="sheet-title" id="dayTitle">Edit day</h2>
+    <p class="sheet-body" id="daySub">Set how many times you relapsed on this day.</p>
+
+    <div class="count-stepper">
+      <button type="button" class="stepper-btn lg" id="dayCountMinus" aria-label="Decrease">−</button>
+      <div class="count-val" id="dayCountVal">0</div>
+      <button type="button" class="stepper-btn lg" id="dayCountPlus" aria-label="Increase">+</button>
+    </div>
+    <div class="hint" id="dayCountHint">0 means no relapse logged for this day</div>
+
+    <div class="sheet-actions">
+      <button class="btn btn-primary" id="daySaveBtn">Save</button>
+      <button class="btn btn-secondary" id="dayCancelBtn">Cancel</button>
     </div>
   </div>
 </div>
@@ -947,6 +1009,7 @@
   const KEY_FIRST = 'streak:first_start_date';
   const KEY_CURRENT = 'streak:current_start_ts';
   const KEY_RELAPSES = 'streak:relapse_dates';
+  const KEY_RELAPSE_COUNTS = 'streak:relapse_counts';
   const KEY_MILESTONE_SEEN = 'streak:milestone_seen';
   const MILESTONES = [3,7,30,60,90,365];
   const CACHE_PREFIX = 'streak_cache:';
@@ -955,7 +1018,23 @@
   let firstStartDate = null;
   let currentStartTs = null;
   let relapseDates = [];
+  let relapseCounts = {}; // { 'YYYY-MM-DD': count } — how many times logged on that day
   let lastDays = null, lastHours = null, lastMinutes = null;
+
+  function getRelapseCount(dateStr){ return relapseCounts[dateStr] || 0; }
+  function setRelapseCount(dateStr, count){
+    count = Math.max(0, Math.round(count) || 0);
+    if(count > 0) relapseCounts[dateStr] = count; else delete relapseCounts[dateStr];
+    relapseDates = Object.keys(relapseCounts);
+  }
+  function bumpRelapseCount(dateStr, delta){
+    setRelapseCount(dateStr, getRelapseCount(dateStr) + delta);
+  }
+  async function persistRelapses(){
+    relapseDates.sort();
+    await persistedSet(KEY_RELAPSES, JSON.stringify(relapseDates));
+    await persistedSet(KEY_RELAPSE_COUNTS, JSON.stringify(relapseCounts));
+  }
 
   const $ = (id) => document.getElementById(id);
   const daysNum = $('daysNum'), daysUnit = $('daysUnit'), dayProgress = $('dayProgress');
@@ -1181,7 +1260,7 @@
   async function syncFromServer(){
     try{
       await ensureAuth();
-      const { data, error } = await sb.from('streak_kv').select('key,value').eq('user_id', userId).in('key', [KEY_CURRENT, KEY_RELAPSES]);
+      const { data, error } = await sb.from('streak_kv').select('key,value').eq('user_id', userId).in('key', [KEY_CURRENT, KEY_RELAPSES, KEY_RELAPSE_COUNTS]);
       if(error || !data) return;
       let changed = false;
       for(const row of data){
@@ -1191,8 +1270,18 @@
             currentStartTs = ts; cacheSet(KEY_CURRENT, row.value);
              lastDays = lastHours = lastMinutes = null; changed = true;
           }
+        }else if(row.key === KEY_RELAPSE_COUNTS){
+          if(row.value !== JSON.stringify(relapseCounts)){
+            try{
+              const parsed = JSON.parse(row.value);
+              relapseCounts = (parsed && typeof parsed === 'object') ? parsed : {};
+              relapseDates = Object.keys(relapseCounts);
+              cacheSet(KEY_RELAPSE_COUNTS, row.value); changed = true;
+            }catch(e){}
+          }
         }else if(row.key === KEY_RELAPSES){
-          if(row.value !== JSON.stringify(relapseDates)){
+          // legacy fallback only — KEY_RELAPSE_COUNTS is authoritative when present
+          if(!Object.keys(relapseCounts).length && row.value !== JSON.stringify(relapseDates)){
             try{ relapseDates = JSON.parse(row.value); cacheSet(KEY_RELAPSES, row.value); changed = true; }catch(e){}
           }
         }
@@ -1215,6 +1304,18 @@
   function addDays(dateObj, n){ const d = new Date(dateObj); d.setDate(d.getDate()+n); return d; }
   function nextMidnight(from){ const d = new Date(from); d.setHours(24,0,0,0); return d; }
   function daysBetween(a,b){ return Math.round((b-a)/86400000); }
+
+  // Recompute when the current streak began from the relapse data itself:
+  // the day right after the most recent logged relapse, or the very first
+  // start date if there are no relapses at all. Called any time relapseDates
+  // changes (new relapse logged, or a day's count edited from the calendar)
+  // so the live timer always reflects the data, not just how it got there.
+  function recomputeCurrentStart(){
+    let latest = null;
+    for(const d of relapseDates){ if(!latest || d > latest) latest = d; }
+    currentStartTs = latest ? nextMidnight(dateStrToDate(latest)).getTime() : dateStrToDate(firstStartDate).getTime();
+     lastDays = lastHours = lastMinutes = null;
+  }
   function formatSince(ts){
     const d = new Date(ts);
     const now = new Date();
@@ -1531,9 +1632,13 @@
     for(let i=0;i<startWeekday;i++) html += '<div class="cell empty"></div>';
     for(let day=1; day<=daysInMonth; day++){
       const dateObj = new Date(year, month, day);
+      const dateStr = toDateStr(dateObj);
       const status = dayStatus(dateObj, todayObj, relapseSet, segmentStarts, firstDateObj);
       const isToday = dateObj.getTime() === todayObj.getTime();
-      html += `<div class="cell ${status}${isToday ? ' today' : ''}" style="animation-delay:${day*14}ms" title="${status}">${day}</div>`;
+      const cnt = getRelapseCount(dateStr);
+      const badge = (status === 'relapse' && cnt > 1) ? `<span class="cnt">×${cnt}</span>` : '';
+      const editable = (status !== 'blank' && status !== 'future');
+      html += `<div class="cell ${status}${isToday ? ' today' : ''}" data-date="${dateStr}" style="animation-delay:${day*14}ms" title="${editable ? 'Tap to edit relapses' : status}">${day}${badge}</div>`;
     }
     calGrid.className = 'cal-grid' + (dir === 1 ? ' slide-l' : dir === -1 ? ' slide-r' : '');
     calGrid.innerHTML = html;
@@ -1573,14 +1678,91 @@
   function openScrim(el){ el.classList.add('open'); sfx.open(); haptic('light'); }
   function closeScrim(el){ el.classList.remove('open'); sfx.close(); }
   const settingsOverlay = $('settingsOverlay');
+  const dayOverlay = $('dayOverlay');
 
-  relapseBtn.addEventListener('click', () => { openScrim(overlay); haptic('warning'); });
   cancelBtn.addEventListener('click', () => { closeScrim(overlay); haptic('light'); });
   overlay.addEventListener('click', (e) => { if(e.target === overlay) closeScrim(overlay); });
   $('settingsBtn').addEventListener('click', () => openScrim(settingsOverlay));
   $('settingsClose').addEventListener('click', () => closeScrim(settingsOverlay));
   settingsOverlay.addEventListener('click', (e) => { if(e.target === settingsOverlay) closeScrim(settingsOverlay); });
-  document.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ [overlay, settingsOverlay].forEach(o => o.classList.contains('open') && closeScrim(o)); hideMilestoneCelebration(); } });
+  document.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ [overlay, settingsOverlay, dayOverlay].forEach(o => o.classList.contains('open') && closeScrim(o)); hideMilestoneCelebration(); } });
+
+  /* ================================================================
+     "WHEN DID IT HAPPEN" — offset picker on the relapse sheet
+     ================================================================ */
+  const whenSeg = $('whenSeg'), whenCustomRow = $('whenCustomRow'), whenDaysVal = $('whenDaysVal'), whenDateLabel = $('whenDateLabel');
+  let whenOffset = 0, whenCustomDays = 2;
+
+  function todayObj(){ const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+  function formatWhenDate(offset){
+    return addDays(todayObj(), -offset).toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+  }
+  function updateWhenDateLabel(){
+    const label = whenOffset === 0 ? 'Today' : whenOffset === 1 ? 'Yesterday' : formatWhenDate(whenOffset);
+    whenDateLabel.textContent = `Logging for ${label}`;
+  }
+  function setWhenMode(mode){
+    whenSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.when === mode));
+    const idx = mode === '0' ? 0 : mode === '1' ? 1 : 2;
+    whenSeg.querySelector('.seg-pill').style.transform = `translateX(calc(${idx} * (100% + 2px)))`;
+    whenCustomRow.classList.toggle('hidden', mode !== 'custom');
+    whenOffset = mode === '0' ? 0 : mode === '1' ? 1 : whenCustomDays;
+    whenDaysVal.textContent = whenCustomDays;
+    updateWhenDateLabel();
+  }
+  whenSeg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-when]'); if(!b) return;
+    setWhenMode(b.dataset.when); haptic('light'); sfx.tick();
+  });
+  $('whenMinus').addEventListener('click', () => {
+    whenCustomDays = Math.max(2, whenCustomDays - 1); whenOffset = whenCustomDays;
+    whenDaysVal.textContent = whenCustomDays; updateWhenDateLabel(); haptic('light'); sfx.tick();
+  });
+  $('whenPlus').addEventListener('click', () => {
+    whenCustomDays = Math.min(120, whenCustomDays + 1); whenOffset = whenCustomDays;
+    whenDaysVal.textContent = whenCustomDays; updateWhenDateLabel(); haptic('light'); sfx.tick();
+  });
+
+  relapseBtn.addEventListener('click', () => { setWhenMode('0'); openScrim(overlay); haptic('warning'); });
+
+  /* ================================================================
+     DAY DETAIL EDITOR — tap any calendar day to set its relapse count
+     ================================================================ */
+  const dayTitle = $('dayTitle'), dayCountVal = $('dayCountVal');
+  const dayCountMinus = $('dayCountMinus'), dayCountPlus = $('dayCountPlus');
+  const daySaveBtn = $('daySaveBtn'), dayCancelBtn = $('dayCancelBtn');
+  let dayEditingDate = null, dayEditingCount = 0;
+
+  function openDayEditor(dateStr){
+    dayEditingDate = dateStr;
+    dayEditingCount = getRelapseCount(dateStr);
+    const d = dateStrToDate(dateStr);
+    dayTitle.textContent = d.toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric' });
+    dayCountVal.textContent = dayEditingCount;
+    openScrim(dayOverlay); haptic('light');
+  }
+  dayCountMinus.addEventListener('click', () => { dayEditingCount = Math.max(0, dayEditingCount - 1); dayCountVal.textContent = dayEditingCount; haptic('light'); sfx.tick(); });
+  dayCountPlus.addEventListener('click', () => { dayEditingCount = Math.min(99, dayEditingCount + 1); dayCountVal.textContent = dayEditingCount; haptic('light'); sfx.tick(); });
+  dayCancelBtn.addEventListener('click', () => closeScrim(dayOverlay));
+  dayOverlay.addEventListener('click', (e) => { if(e.target === dayOverlay) closeScrim(dayOverlay); });
+  daySaveBtn.addEventListener('click', async () => {
+    if(!dayEditingDate) return;
+    setRelapseCount(dayEditingDate, dayEditingCount);
+    recomputeCurrentStart();
+    statsShown = { best:-1, total:-1, resets:-1 };
+    refreshAll();
+    closeScrim(dayOverlay);
+    sfx.success(); haptic('success');
+    showToast('Day updated.', 'g', 2200);
+    await persistedSet(KEY_CURRENT, String(currentStartTs));
+    await persistRelapses();
+  });
+  calGrid.addEventListener('click', (e) => {
+    const cell = e.target.closest('.cell'); if(!cell) return;
+    if(cell.classList.contains('empty') || cell.classList.contains('blank') || cell.classList.contains('future')) return;
+    const dateStr = cell.dataset.date; if(!dateStr) return;
+    openDayEditor(dateStr);
+  });
 
   // Hold-to-confirm (prevents accidental resets)
   (function(){
@@ -1600,20 +1782,21 @@
   })();
 
   async function doReset(){
-    const now = new Date();
-    const todayStr = toDateStr(now);
-    if(!relapseDates.includes(todayStr)) relapseDates.push(todayStr);
-    relapseDates.sort();
-    currentStartTs = nextMidnight(now).getTime();
-     lastDays = lastHours = lastMinutes = null;
+    const offset = whenOffset || 0;
+    const target = addDays(todayObj(), -offset);
+    const targetStr = toDateStr(target);
+
+    bumpRelapseCount(targetStr, 1);
+    recomputeCurrentStart();
     statsShown = { best:-1, total:-1, resets:-1 };
     viewYear = null;
     refreshAll();
     sfx.reset(); haptic('heavy');
     closeScrim(overlay);
-    showToast('Logged. Fresh start at midnight.', 'r', 3200);
+    const dayLabel = offset === 0 ? 'today' : offset === 1 ? 'yesterday' : formatWhenDate(offset);
+    showToast(`Logged for ${dayLabel}.`, 'r', 3200);
     await persistedSet(KEY_CURRENT, String(currentStartTs));
-    await persistedSet(KEY_RELAPSES, JSON.stringify(relapseDates));
+    await persistRelapses();
   }
 
   /* ================================================================
@@ -1707,6 +1890,7 @@
     userId = null; userEmail = null;
      lastDays = lastHours = lastMinutes = null;
     statsShown = { best:-1, total:-1, resets:-1 }; viewYear = null;
+    relapseDates = []; relapseCounts = {};
     if(renderTimer){ clearInterval(renderTimer); renderTimer = null; }
     if(calTimer){ clearInterval(calTimer); calTimer = null; }
     authEmail.value = ''; authPassword.value = '';
@@ -1727,6 +1911,17 @@
        relapseDates = Array.isArray(storedRelapses) ? storedRelapses.filter(Boolean) : [];
      }catch(e){
        relapseDates = [];
+     }
+     try{
+       const rawCounts = await persistedGet(KEY_RELAPSE_COUNTS);
+       const parsed = JSON.parse(rawCounts);
+       relapseCounts = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+       if(Object.keys(relapseCounts).length) relapseDates = Object.keys(relapseCounts);
+     }catch(e){
+       // no counts saved yet — migrate from the legacy date list (1 relapse per known day)
+       relapseCounts = {};
+       relapseDates.forEach(d => { relapseCounts[d] = 1; });
+       if(relapseDates.length) await persistedSet(KEY_RELAPSE_COUNTS, JSON.stringify(relapseCounts));
      }
     viewYear = null;
     refreshAll();
